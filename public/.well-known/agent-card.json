@@ -1,0 +1,106 @@
+{
+  "name": "ANOA Trustless AI Agent",
+  "description": "Proof‑Anchored Intelligence for Autonomous Trading  on Monad - Auto trading with capital delegation, yield optimization, risk management with verifiable on-chain reputation",
+  "url": "https://anoa.app",
+  "version": "1.0.0",
+  "capabilities": {
+    "streaming": false,
+    "pushNotifications": false,
+    "stateTransitionHistory": false
+  },
+  "authentication": {
+    "schemes": ["x402"],
+    "credentials": null
+  },
+  "defaultInputModes": ["text"],
+  "defaultOutputModes": ["text"],
+  "skills": [
+    {
+      "id": "trading",
+      "name": "Trading",
+      "description": "Execute trades on nad.fun (Monad DEX) with risk management and signed TradeIntents",
+      "tags": ["trading", "defi", "monad", "nad.fun", "eip-712"],
+      "examples": [
+        "Buy 0.1 MON worth of token 0x...",
+        "What is the best entry point for this token?",
+        "Sell 50% of my position in token X"
+      ]
+    },
+    {
+      "id": "portfolio",
+      "name": "Portfolio Management",
+      "description": "Track and optimize portfolio across Monad DeFi protocols with PnL in stablecoin terms",
+      "tags": ["portfolio", "analytics", "yield", "pnl"],
+      "examples": [
+        "Show my portfolio",
+        "What is my total PnL?",
+        "Rebalance my portfolio"
+      ]
+    },
+    {
+      "id": "reputation",
+      "name": "Trust & Reputation",
+      "description": "Query and manage on-chain reputation via ERC-8004 Reputation Registry",
+      "tags": ["trust", "reputation", "erc-8004", "feedback"],
+      "examples": [
+        "Check reputation for agent 42",
+        "What is the trust score of agent 143:7?",
+        "Give feedback to agent 10"
+      ]
+    },
+    {
+      "id": "market-analysis",
+      "name": "Market Analysis",
+      "description": "AI-powered market analysis, sentiment analysis, and trade recommendations",
+      "tags": ["analysis", "ai", "market", "sentiment"],
+      "examples": [
+        "Analyze the current market conditions on Monad",
+        "What tokens are trending on nad.fun?",
+        "Is this a good time to buy?"
+      ]
+    },
+    {
+      "id": "yield",
+      "name": "Yield Optimization",
+      "description": "Optimize DeFi yields across aPriori, Upshift, and other Monad protocols",
+      "tags": ["yield", "defi", "staking", "aprmon"],
+      "examples": [
+        "What are the best yield opportunities?",
+        "Stake MON for aprMON",
+        "Calculate potential yield for 100 MON"
+      ]
+    },
+    {
+      "id": "capital-delegation",
+      "name": "Capital Delegation",
+      "description": "Delegate capital to agents for boosted trading. Min 1000 MON per delegation with proportional PnL distribution.",
+      "tags": ["delegation", "capital", "vault", "pnl"],
+      "examples": [
+        "Delegate 1000 MON to agent #164",
+        "Check my delegation PnL",
+        "Withdraw my delegation"
+      ]
+    }
+  ],
+  "endpoints": {
+    "a2a": "/api/a2a",
+    "mcp": "/api/mcp"
+  },
+  "contracts": {
+    "AnoaTrustlessAgentCore": "0x3379806C54B0805EC01568e00547f164b56A5Eb8",
+    "AnoaCapitalVault": "0x3ebB151F9D743D6122B07B49592f8C22b77F5109"
+  },
+  "erc8004": {
+    "chain": "monad-mainnet",
+    "chainId": 143,
+    "identityRegistry": "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432",
+    "reputationRegistry": "0x8004BAa17C55a88189AE136b182e5fdA19dE9b63",
+    "supportedTrust": ["reputation", "crypto-economic"]
+  },
+  "x402": {
+    "network": "eip155:143",
+    "facilitator": "https://x402-facilitator.molandak.org",
+    "price": "$0.001",
+    "token": "USDC"
+  }
+}

@@ -1,0 +1,435 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model - stores wallet addresses
+model User {
+  id        String   @id @default(cuid())
+  address   String   @unique
+  ensName   String?
+  email     String?  @unique
+  avatar    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  agents      Agent[]
+  delegations Delegation[]
+  apiKeys     ApiKey[]
+
+  @@index([address])
+  @@map("users")
+}
+
+// AI Agent model - ERC-8004 compliant agents
+model Agent {
+  id           String      @id @default(cuid())
+  userId       String
+  name         String
+  description  String?     @db.Text
+  strategy     Strategy    @default(MOMENTUM)
+  status       AgentStatus @default(PENDING)
+  trustScore   Int         @default(50)
+  totalCapital Decimal     @default(0) @db.Decimal(78, 18)
+  totalPnl     Decimal     @default(0) @db.Decimal(78, 18)
+  totalTrades  Int         @default(0)
+  winRate      Float       @default(0)
+  maxDrawdown  Float       @default(0)
+  sharpeRatio  Float       @default(0)
+  
+  // ERC-8004 Official Registry (for interoperability with other agents)
+  erc8004AgentId   BigInt?   @unique  // Token ID on official 0x8004... registry
+  erc8004TxHash    String?   // Registration transaction hash
+  
+  // ANOA Custom Contract (for our trading-specific features)
+  anoaAgentId      BigInt?   @unique  // Token ID on AnoaAgentIdentity contract
+  anoaTxHash       String?   // Our contract registration tx hash
+  
+  // HD Wallet Derivation (per-agent wallet isolation)
+  walletIndex      Int?      @unique  // BIP-32 derivation index (m/44'/60'/0'/0/{index})
+
+  // Agent Identity Data
+  walletAddr       String?   // Agent's derived HD wallet address
+  metadataUri      String?   // IPFS/Arweave URI to agent metadata JSON
+  imageUrl         String?   // Agent avatar/image URL
+  handle           String?   @unique  // Unique handle (lowercase, no spaces)
+  
+  // Protocol Endpoints (A2A, MCP)
+  a2aEndpoint      String?   // Agent-to-Agent protocol endpoint
+  mcpEndpoint      String?   // Model Context Protocol endpoint
+  
+  // ERC-8004 Trust & Capabilities
+  x402Enabled      Boolean   @default(false) // Supports x402 payments
+  isActive         Boolean   @default(false) // Active for discovery
+  capabilities     Int       @default(0)     // Bitmap of capabilities
+  trustModels      String[]  @default([])    // ["reputation", "crypto-economic", "tee-attestation"]
+  
+  // Autonomous Trading Config
+  autoExecute    Boolean  @default(false)  // If true, auto-execute trades without human approval
+  maxDailyTrades Int      @default(50)     // Max trades per day (safety limit)
+  dailyLossLimit Float    @default(10.0)   // Stop trading if daily loss > X% of capital
+
+  // Risk Parameters (stored as JSON for flexibility)
+  riskParams       Json?
+  metadata         Json?     // Additional off-chain metadata
+
+  // Delegation profit-sharing
+  performanceFeeBps Int       @default(2000) // 20% performance fee on delegator profits (bps)
+  
+  // On-chain ID (for API lookup)
+  onChainId        String?   @unique  // Combined chain+tokenId identifier
+  
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  executions  Execution[]
+  delegations Delegation[]
+  validations Validation[]
+  feedbacks   Feedback[]
+  proposals   TradeProposal[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([trustScore])
+  @@index([erc8004AgentId])
+  @@index([anoaAgentId])
+  @@index([handle])
+  @@index([walletAddr])
+  @@map("agents")
+}
+
+// Strategy execution records
+model Execution {
+  id          String          @id @default(cuid())
+  agentId     String
+  type        ExecutionType
+  params      Json
+  result      Json?
+  pnl         Decimal?        @db.Decimal(78, 18)
+  gasUsed     BigInt?
+  txHash      String?         @unique
+  status      ExecutionStatus @default(PENDING)
+  errorMsg    String?
+  executedAt  DateTime        @default(now())
+  completedAt DateTime?
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  proposals TradeProposal[]
+
+  @@index([agentId])
+  @@index([status])
+  @@index([executedAt])
+  @@index([type])
+  @@map("executions")
+}
+
+// Capital delegations to agents
+model Delegation {
+  id           String           @id @default(cuid())
+  userId       String
+  agentId      String
+  amount       Decimal          @db.Decimal(78, 18)
+  txHash       String           @unique
+  status       DelegationStatus @default(ACTIVE)
+  depositedAt  DateTime?        // When capital was deposited on-chain
+  lockupEndsAt   DateTime?        // When lockup period ends (from vault contract)
+  accumulatedPnl      Decimal          @default(0) @db.Decimal(78, 18) // Proportional PnL earned by delegator
+  onChainDelegationId BigInt?          // Vault contract delegation ID (for on-chain PnL recording)
+  createdAt           DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  user  User  @relation(fields: [userId], references: [id])
+  agent Agent @relation(fields: [agentId], references: [id])
+
+  @@index([userId])
+  @@index([agentId])
+  @@map("delegations")
+}
+
+// ERC-8004 Validation records
+model Validation {
+  id            String    @id @default(cuid())
+  agentId       String
+  requestHash   String    @unique
+  validatorAddr String
+  requestUri    String?
+  responseUri   String?
+  responseHash  String?
+  score         Int?
+  tag           String?
+  status        String    @default("pending")
+  createdAt     DateTime  @default(now())
+  completedAt   DateTime?
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId])
+  @@index([validatorAddr])
+  @@map("validations")
+}
+
+// ERC-8004 Reputation feedback
+model Feedback {
+  id              String   @id @default(cuid())
+  agentId         String
+  clientAddr      String   // Address that gave feedback
+  feedbackIndex   BigInt?  // On-chain feedback index
+  
+  // Value-based feedback (ERC-8004 uses int128 with decimals)
+  value           BigInt   @default(0)  // Signed value (can be negative for losses)
+  valueDecimals   Int      @default(2)  // Decimal places (e.g., 2 = 100 means 1.00)
+  
+  // Legacy score support (0-100 scale)
+  score           Int?
+  
+  // Tags for categorization
+  tag1            String?  // Primary category (e.g., "trade_execution", "yield_performance")
+  tag2            String?  // Outcome tag (e.g., "success", "failure", "slippage_high")
+  
+  // Additional data
+  endpoint        String?  // Which endpoint was called
+  feedbackUri     String?  // IPFS URI to detailed feedback
+  feedbackHash    String?  // Content hash for verification
+  fileUri         String?  // Alias for feedbackUri (for API compatibility)
+  fileHash        String?  // Alias for feedbackHash (for API compatibility)
+  responseUri     String?  // Agent's response URI (if responded)
+  responseHash    String?  // Agent's response hash
+  revoked         Boolean  @default(false)  // Whether feedback was revoked
+  
+  txHash          String?  @unique
+  createdAt       DateTime @default(now())
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId])
+  @@index([clientAddr])
+  @@index([tag1, tag2])
+  @@index([createdAt])
+  @@map("feedbacks")
+}
+
+// User API keys
+model ApiKey {
+  id           String    @id @default(cuid())
+  userId       String
+  name         String
+  keyPrefix    String
+  keyHash      String    @unique
+  description  String?
+  isActive     Boolean   @default(true)
+  lastUsedAt   DateTime?
+  requestCount Int       @default(0)
+  expiresAt    DateTime?
+  createdAt    DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([keyHash])
+  @@map("api_keys")
+}
+
+// Token holdings tracking
+model TokenHolding {
+  id          String   @id @default(cuid())
+  walletAddr  String
+  tokenAddr   String
+  balance     Decimal  @db.Decimal(78, 18)
+  avgBuyPrice Decimal? @db.Decimal(78, 18)
+  totalCost   Decimal? @db.Decimal(78, 18)
+  realizedPnl Decimal  @default(0) @db.Decimal(78, 18)
+  updatedAt   DateTime @updatedAt
+
+  @@unique([walletAddr, tokenAddr])
+  @@index([walletAddr])
+  @@map("token_holdings")
+}
+
+// Yield deposit transaction records
+model YieldDeposit {
+  id          String        @id @default(cuid())
+  walletAddr  String
+  strategyId  String // e.g., "apriori-mon", "upshift-ausd"
+  protocol    YieldProtocol
+  action      YieldAction
+  tokenIn     String // Token address deposited
+  tokenOut    String // Receipt token address received
+  amountIn    Decimal       @db.Decimal(78, 18)
+  sharesOut   Decimal?      @db.Decimal(78, 18)
+  txHash      String        @unique
+  status      YieldTxStatus @default(PENDING)
+  errorMsg    String?
+  chainId     Int           @default(143) // Monad mainnet
+  createdAt   DateTime      @default(now())
+  confirmedAt DateTime?
+
+  @@index([walletAddr])
+  @@index([strategyId])
+  @@index([protocol])
+  @@index([status])
+  @@index([createdAt])
+  @@map("yield_deposits")
+}
+
+// Yield withdrawal request records (for delayed withdrawals)
+model YieldWithdrawal {
+  id             String           @id @default(cuid())
+  walletAddr     String
+  strategyId     String
+  protocol       YieldProtocol
+  requestId      String? // On-chain request ID (for aprMON/Upshift delayed redemption)
+  shares         Decimal          @db.Decimal(78, 18)
+  expectedAssets Decimal?         @db.Decimal(78, 18)
+  claimedAssets  Decimal?         @db.Decimal(78, 18)
+  requestTxHash  String           @unique
+  claimTxHash    String?          @unique
+  status         WithdrawalStatus @default(PENDING)
+  unlockAt       DateTime? // When withdrawal becomes claimable
+  chainId        Int              @default(143) // Monad mainnet
+  createdAt      DateTime         @default(now())
+  claimedAt      DateTime?
+
+  @@index([walletAddr])
+  @@index([strategyId])
+  @@index([status])
+  @@index([unlockAt])
+  @@map("yield_withdrawals")
+}
+
+// OpenClaw Judgement Pattern — Trade Proposals
+// Human-in-the-loop approval before executing trades
+model TradeProposal {
+  id             String              @id @default(cuid())
+  agentId        String
+  tokenAddress   String
+  amount         String
+  action         String              // "buy" | "sell"
+  slippageBps    Int                 @default(100)
+  status         TradeProposalStatus @default(PENDING)
+  proposedBy     String?             // A2A caller address or "system"
+  approvedBy     String?             // Human wallet address that approved
+  rejectedReason String?
+  executionId    String?             // Links to Execution after approval
+  quoteData      Json?               // Cached quote at proposal time
+  expiresAt      DateTime
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  agent     Agent      @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  execution Execution? @relation(fields: [executionId], references: [id])
+
+  @@index([agentId])
+  @@index([status])
+  @@index([expiresAt])
+  @@map("trade_proposals")
+}
+
+// Fee/Revenue tracking — records all platform fee payments
+model FeePayment {
+  id        String      @id @default(cuid())
+  agentId   String?     // Agent this fee relates to (null for global fees)
+  userId    String?     // User who paid the fee
+  feeType   FeeType     // Registration, trading, withdrawal
+  amount    Decimal     @db.Decimal(78, 18)
+  txHash    String      @unique
+  chainId   Int         @default(143)
+  createdAt DateTime    @default(now())
+
+  @@index([agentId])
+  @@index([userId])
+  @@index([feeType])
+  @@index([createdAt])
+  @@map("fee_payments")
+}
+
+// Enums
+
+// Agent trading strategies (ERC-8004 compliant)
+enum Strategy {
+  MOMENTUM  // Trend-following strategies
+  YIELD     // Yield farming and optimization
+  ARBITRAGE // Cross-market price arbitrage
+  DCA       // Dollar-cost averaging
+  GRID      // Grid trading strategies
+  HEDGE     // Risk hedging and protection
+}
+
+enum AgentStatus {
+  PENDING
+  ACTIVE
+  PAUSED
+  STOPPED
+}
+
+enum ExecutionType {
+  BUY
+  SELL
+  PROVIDE_LIQUIDITY
+  REMOVE_LIQUIDITY
+  LEND
+  BORROW
+  REPAY
+  STAKE
+  UNSTAKE
+  CLAIM_REWARDS
+}
+
+enum ExecutionStatus {
+  PENDING
+  EXECUTING
+  SUCCESS
+  FAILED
+}
+
+enum DelegationStatus {
+  ACTIVE
+  WITHDRAWN
+}
+
+enum FeeType {
+  REGISTRATION   // Agent creation registration fee
+  TRADING        // Trading fee (per-trade)
+  WITHDRAWAL     // Withdrawal fee on capital withdrawal
+}
+
+// Yield-related enums
+enum YieldProtocol {
+  APRIORI // aprMON liquid staking
+  UPSHIFT // Upshift vault (earnAUSD)
+}
+
+enum YieldAction {
+  DEPOSIT
+  WITHDRAW_INSTANT
+  WITHDRAW_REQUEST
+  WITHDRAW_CLAIM
+}
+
+enum YieldTxStatus {
+  PENDING
+  CONFIRMED
+  FAILED
+}
+
+enum WithdrawalStatus {
+  PENDING // Request submitted, waiting for unlock
+  CLAIMABLE // Epoch/time passed, can claim
+  CLAIMED // Successfully claimed
+  FAILED // Transaction failed
+}
+
+enum TradeProposalStatus {
+  PENDING  // Awaiting human approval
+  APPROVED // Approved, executing
+  REJECTED // Rejected by human
+  EXECUTED // Successfully executed after approval
+  EXPIRED  // Past expiresAt without action
+}

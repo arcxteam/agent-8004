@@ -1,0 +1,8 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "forge": true,
+        "gh": true,
+        "npx prisma": true
+    },
+    "git.ignoreLimitWarning": true
+}
