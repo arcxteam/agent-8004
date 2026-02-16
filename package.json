@@ -72,8 +72,8 @@
   },
   "overrides": {
     "undici": "6.23.0",
-    "viem": "$viem",
-    "wagmi": "$wagmi",
+    "viem": "2.38.0",
+    "wagmi": "2.19.3",
     "ox": "0.9.6"
   }
 }
